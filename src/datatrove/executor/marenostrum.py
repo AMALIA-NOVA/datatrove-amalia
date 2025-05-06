@@ -32,7 +32,8 @@ class MareNostrumExecutor(SlurmPipelineExecutor):
                 merge_args,
                 f'merge_stats {self.logging_dir.resolve_paths("stats")} '
                 f'-o {self.logging_dir.resolve_paths("stats.json")}'
-            )
+            ),
+            self.job_id_retriever
         )
 
     def get_launch_file_contents(self, sbatch_args, run_script):
@@ -46,6 +47,7 @@ class MareNostrumExecutor(SlurmPipelineExecutor):
                 # Add our export after this line
                 lines.insert(i + 1, 'export HF_HOME="/gpfs/projects/epor32/"')
                 lines.insert(i + 2, 'export PYTHONPATH="/gpfs/projects/epor32/gvmartins/arquivo-filter:$PYTHONPATH"')
+                # lines.insert(i + 3, 'export PATH=$PATH:/gpfs/projects/epor32/gvmartins/datatrove_amalia/src/datatrove/tools')
                 break
 
         return '\n'.join(lines)

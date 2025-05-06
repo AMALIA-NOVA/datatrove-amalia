@@ -12,10 +12,13 @@ from datatrove.utils.typeshelper import StatHints
 
 
 def get_filter_result(res):
-    result, reason = res, None
+    result, reason, reason_value = res, None, None
     if isinstance(result, tuple):
-        result, reason = res
-    return result, reason
+        if len(result) == 2:
+            result, reason = result
+        elif len(result) == 3:
+            result, reason, reason_value = result
+    return result, reason, reason_value
 
 
 class BaseFilter(PipelineStep, ABC):
@@ -68,7 +71,7 @@ class BaseFilter(PipelineStep, ABC):
                     batch_filter_result = self.filter_batch(batch)
                 for doc, doc_filter_result in zip(batch, batch_filter_result):
                     self.stat_update(StatHints.total)
-                    filter_result, reason = get_filter_result(doc_filter_result)
+                    filter_result, reason, reason_value = get_filter_result(doc_filter_result)
                     if filter_result:
                         self.stat_update(StatHints.forwarded)
                         self.update_doc_stats(doc)
@@ -80,4 +83,5 @@ class BaseFilter(PipelineStep, ABC):
                         if self.exclusion_writer:
                             if reason:
                                 doc.metadata["filter_reason"] = reason
+                                doc.metadata["filter_reason_value"] = reason_value
                             writer.write(doc, rank)

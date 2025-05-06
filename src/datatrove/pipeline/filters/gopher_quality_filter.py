@@ -58,7 +58,7 @@ class GopherQualityFilter(BaseFilter):
         self.stop_words = set(STOP_WORDS if stop_words is None else stop_words)
         self.language = language
 
-    def filter(self, doc: Document) -> bool | tuple[bool, str]:
+    def filter(self, doc: Document) -> tuple[bool, str, float] | tuple[bool, str] | bool:
         """
 
         Args:
@@ -77,49 +77,55 @@ class GopherQualityFilter(BaseFilter):
 
         # words < min_doc_words or words > max_doc_words
         if self.min_doc_words and n_non_symbol_words_words < self.min_doc_words:
-            return False, "gopher_short_doc"
+            return False, "gopher_short_doc", n_non_symbol_words_words
         if self.max_doc_words and n_non_symbol_words_words > self.max_doc_words:
-            return False, "gopher_long_doc"
+            return False, "gopher_long_doc", n_non_symbol_words_words
 
         # mean word length is outside the range of 3 to 10 characters
         avg_n_words = np.mean([len(w) for w in non_symbol_words])
         if self.min_avg_word_length and avg_n_words < self.min_avg_word_length:
-            return False, "gopher_below_avg_threshold"
+            return False, "gopher_below_avg_threshold", avg_n_words
         if self.max_avg_word_length and avg_n_words > self.max_avg_word_length:
-            return False, "gopher_above_avg_threshold"
+            return False, "gopher_above_avg_threshold", avg_n_words
 
         # symbol-to-word ratio greater than 0.1 for either the hash symbol or the ellipsis
-        if self.max_symbol_word_ratio and text.count("#") / n_words > self.max_symbol_word_ratio:
-            return False, "gopher_too_many_hashes"
-        if self.max_symbol_word_ratio and (text.count("...") + text.count("…")) / n_words > self.max_symbol_word_ratio:
-            return False, "gopher_too_many_ellipsis"
+        ratio = text.count("#") / n_words
+        if self.max_symbol_word_ratio and ratio > self.max_symbol_word_ratio:
+            return False, "gopher_too_many_hashes", ratio
+        ratio = (text.count("...") + text.count("…")) / n_words
+        if self.max_symbol_word_ratio and ratio > self.max_symbol_word_ratio:
+            return False, "gopher_too_many_ellipsis", ratio
 
         # any document with more than 90 % of lines starting with a bullet point,
         # or more than 30 % ending with an ellipsis.
         lines = text.splitlines()
+        ratio = sum(s.lstrip().startswith("•") or s.lstrip().startswith("-") for s in lines) / len(lines)
         if (
             self.max_bullet_lines_ratio
-            and sum(s.lstrip().startswith("•") or s.lstrip().startswith("-") for s in lines) / len(lines)
+            and ratio
             > self.max_bullet_lines_ratio
         ):
-            return False, "gopher_too_many_bullets"
+            return False, "gopher_too_many_bullets", ratio
+        ratio = sum(s.rstrip().endswith("...") or s.rstrip().endswith("…") for s in lines) / len(lines)
         if (
             self.max_ellipsis_lines_ratio
-            and sum(s.rstrip().endswith("...") or s.rstrip().endswith("…") for s in lines) / len(lines)
+            and ratio
             > self.max_ellipsis_lines_ratio
         ):
-            return False, "gopher_too_many_end_ellipsis"
+            return False, "gopher_too_many_end_ellipsis", ratio
 
         # that 80 % of words in a document contain at least one alphabetic character
+        ratio = sum([any((c.isalpha() for c in w)) for w in words]) / n_words
         if (
             self.max_non_alpha_words_ratio
             # nb of words with at least 1 alpha char < 0.8
-            and sum([any((c.isalpha() for c in w)) for w in words]) / n_words < self.max_non_alpha_words_ratio
+            and ratio < self.max_non_alpha_words_ratio
         ):
-            return False, "gopher_below_alpha_threshold"
+            return False, "gopher_below_alpha_threshold", ratio
 
         # stop word filter
-        if self.min_stop_words and len(self.stop_words.intersection(set(words))) < self.min_stop_words:
-            return False, "gopher_enough_stop_words"
+        ratio = len(self.stop_words.intersection(set(words)))
+        if self.min_stop_words and ratio < self.min_stop_words:
+            return False, "gopher_enough_stop_words", ratio
 
         return True

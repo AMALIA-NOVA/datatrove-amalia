@@ -30,27 +30,28 @@ class FineWebQualityFilter(BaseFilter):
         self.new_line_ratio = new_line_ratio
         self.language = language
 
-    def filter(self, doc) -> bool | tuple[bool, str]:
+    def filter(self, doc) -> tuple[bool, str] | tuple[bool, str, float] | bool:
         lines = doc.text.split("\n")
         lines = [line for line in lines if line.strip() != ""]
         if len(lines) == 0:
             return False, "empty"
         ratio = sum(1 for line in lines if line.endswith(self.stop_chars)) / len(lines)
         if ratio < self.line_punct_thr and not (ratio == 0 and self.line_punct_exclude_zero):
-            return False, "line_punct_ratio"
+            return False, "line_punct_ratio", ratio
 
         ratio = sum(1 for line in lines if len(line) <= self.short_line_length) / len(lines)
         if ratio > self.short_line_threshold:
-            return False, "short_line_ratio"
+            return False, "short_line_ratio", ratio
 
         ratio = find_duplicates(lines)[1] / len(doc.text.replace("\n", ""))
 
         if ratio > self.char_duplicates_ratio:
-            return False, "char_dup_ratio"
+            return False, "char_dup_ratio", ratio
 
         words = split_into_words(doc.text, self.language)
         new_line = doc.text.count("\n")
-        if new_line / len(words) > self.new_line_ratio:
-            return False, "list_ratio"
+        ratio = new_line / len(words)
+        if ratio > self.new_line_ratio:
+            return False, "list_ratio", ratio
 
         return True
