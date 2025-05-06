@@ -8,14 +8,13 @@ from datatrove.utils.logging import logger
 
 class BasePostScraper(PipelineStep):
     """Base module for PostScrapers. PostScrapers are used to process the scraped data from a source.
-        PostScrapers are the last step in a pipeline usually.
 
     Args:
         text_key: key to use for the text in the default adapter (default: "text").
         id_key: key to use for the id in the default adapter (default: "id").
     """
 
-    type = "🧹 - POST-SCRAPER"
+    type = "🧽️ - SCRAPE"
 
     def __init__(
             self,
@@ -41,7 +40,7 @@ class BasePostScraper(PipelineStep):
 
 
     def run(self, data: DocumentsPipeline = None, rank: int = 0, world_size: int = 1) -> DocumentsPipeline:
-        """Iterates through each document in data and calls the post scraping functions
+        """Iterates through each document in data and calls the post-scraping functions
 
         Args:
           data: DocumentsPipeline:
@@ -52,6 +51,7 @@ class BasePostScraper(PipelineStep):
 
         """
         for doc in data:
+            self.stat_update(StatHints.total)
             with self.track_time():
                 try:
                     doc.text = self.post_scrape(doc.text)

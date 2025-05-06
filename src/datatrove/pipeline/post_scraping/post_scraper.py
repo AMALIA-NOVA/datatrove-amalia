@@ -1,13 +1,9 @@
-from typing import Callable, Literal
-
 from datatrove.io import DataFileLike, DataFolderLike
-from datatrove.pipeline.readers.base import BaseDiskReader
+from datatrove.pipeline.post_scraping.base import BasePostScraper
 from datatrove.utils.logging import logger
 
-from datatrove.tools.post_scraping import remove_short_lines, remove_dup_lines
 
-
-class PostScraper(BaseDiskReader):
+class PostScraper(BasePostScraper):
     """Applies post-scraping procedures for cleaning up the read text data.
 
     Args:
@@ -17,7 +13,7 @@ class PostScraper(BaseDiskReader):
         remove_dup_lines: whether to remove duplicated lines (default: True).
     """
 
-    name = "🧹 - POST-SCRAPER"
+    name = "🧹 POST-SCRAPER"
     _requires_dependencies = ["orjson"]
 
     def __init__(
@@ -37,26 +33,32 @@ class PostScraper(BaseDiskReader):
     def post_scrape(self, text):
         """Post-scrape the text data."""
         if self.remove_short_lines:
-            text = remove_short_lines(text)
+            text = self.short_lines_remover(text)
 
         if self.remove_dup_lines:
-            text = remove_dup_lines(text)
+            text = self.dup_lines_remover(text)
 
         return text
 
-    def remove_short_lines(self, text, min_length=10):
-        """Remove lines shorter than min_length characters from a text"""
+    def short_lines_remover(self, text, min_length=10):
+        """Remove lines with less than min_length alphabetic characters from a text"""
         if not text:
             return text
 
-        # Split text into lines and filter out short ones
         lines = text.splitlines()
-        filtered_lines = [line for line in lines if len(line.strip()) > min_length]
+        # filtered_lines = [line for line in lines if len(line.strip()) > min_length]
+
+        filtered_lines = []
+        for line in lines:
+            line = line.strip()
+            # Check if the line has enough alphabetic characters
+            if len([char for char in line if char.isalpha()]) >= min_length:
+                filtered_lines.append(line)
 
         # Rejoin the filtered lines
         return '\n'.join(filtered_lines)
 
-    def remove_dup_lines(self, text):
+    def dup_lines_remover(self, text):
         """Remove duplicated lines from a text"""
         if not text:
             return text
