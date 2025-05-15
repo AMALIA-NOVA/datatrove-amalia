@@ -46,12 +46,12 @@ def find_duplicates(x: list[str]) -> tuple[int, int]:
     return duplicate_elements, duplicate_chars
 
 
-def find_top_duplicate(x: list[str]) -> int:
+def find_top_duplicate(x: list[str]) -> tuple[int, int]:
     counter = Counter()
     for element in x:
         counter[element] += 1
     top_n_gram = counter.most_common(1)[0]
-    return len(top_n_gram[0]) * top_n_gram[1]
+    return len(top_n_gram[0]) * top_n_gram[1], top_n_gram[1]
 
 
 def find_all_duplicate(words: list[str], n: int) -> int:
@@ -134,7 +134,9 @@ class GopherRepetitionFilter(BaseFilter):
             n_grams = get_n_grams(words, n)
             if not n_grams:
                 continue
-            top_char_length = find_top_duplicate(n_grams)
+            top_char_length, count = find_top_duplicate(n_grams)
+            if count <= 1:
+                continue
             ratio = top_char_length / len(text)
             if ratio > n_frac:
                 return False, f"top_{n}_gram", ratio
