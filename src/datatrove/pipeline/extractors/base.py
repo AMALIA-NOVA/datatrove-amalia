@@ -51,8 +51,15 @@ class BaseExtractor(PipelineStep):
                 self.stat_update(StatHints.total)
                 with self.track_time():
                     try:
-                        doc.text = extractor.process_document(doc.text, self.extract)
+                        extracted_data = extractor.process_document(doc.text, self.extract)
                         self.stat_update("extracted")
+
+                        if isinstance(extracted_data, dict):
+                            doc.text = extracted_data.get("text", "")
+                            doc.metadata['title'] = extracted_data.get("title", "")
+                        else:
+                            doc.text = extracted_data
+
                     except TimeoutError:
                         self.stat_update("timeout")
                         logger.warning("⏰ Timeout while cleaning record text. Skipping record.")

@@ -107,26 +107,34 @@ class GopherRepetitionFilter(BaseFilter):
         self._line_splitter = re.compile("\n+")
         self.language = language
 
-    def filter(self, doc: Document) -> tuple[bool, str] | tuple[bool, str, float] | bool:
+    def filter(self, doc: Document) -> tuple[bool, str] | tuple[bool, dict, str] | tuple[bool, dict]:
         text = doc.text
+
+        thresholds = {}
 
         paragraphs = self.paragraph_exp.split(text.strip())
         paragraphs_duplicates, char_duplicates = find_duplicates(paragraphs)
         ratio = paragraphs_duplicates / len(paragraphs)
+        thresholds["dup_para_frac"] = ratio
         if self.dup_para_frac and ratio > self.dup_para_frac:
-            return False, "dup_para_frac", ratio
+            return False, thresholds, "dup_para_frac"
+
         ratio = char_duplicates / len(text)
+        thresholds["dup_para_char_frac"] = ratio
         if self.dup_para_char_frac and ratio > self.dup_para_char_frac:
-            return False, "dup_para_char_frac", ratio
+            return False, thresholds, "dup_para_char_frac"
 
         lines = self._line_splitter.split(text)
         line_duplicates, char_duplicates = find_duplicates(lines)
         ratio = line_duplicates / len(lines)
+        thresholds["dup_line_frac"] = ratio
         if self.dup_line_frac and ratio > self.dup_line_frac:
-            return False, "dup_line_frac", ratio
+            return False, thresholds, "dup_line_frac"
+
         ratio = char_duplicates / len(text)
+        thresholds["dup_line_char_frac"] = ratio
         if self.dup_line_char_frac and ratio > self.dup_line_char_frac:
-            return False, "dup_line_char_frac", ratio
+            return False, thresholds, "dup_line_char_frac"
 
         words = split_into_words(text, self.language)
 
@@ -138,13 +146,15 @@ class GopherRepetitionFilter(BaseFilter):
             if count <= 1:
                 continue
             ratio = top_char_length / len(text)
+            thresholds[f"top_{n}_gram"] = ratio
             if ratio > n_frac:
-                return False, f"top_{n}_gram", ratio
+                return False, thresholds, f"top_{n}_gram"
 
         for n, n_frac in self.dup_n_grams:
             n_duplicates_char = find_all_duplicate(words, n)
             ratio = n_duplicates_char / len(text)
+            thresholds[f"duplicated_{n}_n_grams"] = ratio
             if ratio > n_frac:
-                return False, f"duplicated_{n}_n_grams", ratio
+                return False, thresholds, f"duplicated_{n}_n_grams"
 
-        return True
+        return True, thresholds

@@ -71,7 +71,15 @@ class BaseFilter(PipelineStep, ABC):
                     batch_filter_result = self.filter_batch(batch)
                 for doc, doc_filter_result in zip(batch, batch_filter_result):
                     self.stat_update(StatHints.total)
-                    filter_result, reason, reason_value = get_filter_result(doc_filter_result)
+                    filter_result, thresholds, reason = get_filter_result(doc_filter_result)
+
+                    # Update doc metadata with thresholds
+                    if isinstance(thresholds, dict):
+                        if 'filter_values' not in doc.metadata:
+                            doc.metadata['filter_values'] = {}
+                        for key, value in thresholds.items():
+                            doc.metadata['filter_values'][key] = value
+
                     if filter_result:
                         self.stat_update(StatHints.forwarded)
                         self.update_doc_stats(doc)
@@ -83,5 +91,4 @@ class BaseFilter(PipelineStep, ABC):
                         if self.exclusion_writer:
                             if reason:
                                 doc.metadata["filter_reason"] = reason
-                                doc.metadata["filter_reason_value"] = reason_value
                             writer.write(doc, rank)

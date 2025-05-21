@@ -30,28 +30,34 @@ class FineWebQualityFilter(BaseFilter):
         self.new_line_ratio = new_line_ratio
         self.language = language
 
-    def filter(self, doc) -> tuple[bool, str] | tuple[bool, str, float] | bool:
+    def filter(self, doc) -> tuple[bool, str] | tuple[bool, dict, str] | tuple[bool, dict]:
         lines = doc.text.split("\n")
         lines = [line for line in lines if line.strip() != ""]
+
+        thresholds = {}
+
         if len(lines) == 0:
             return False, "empty"
         ratio = sum(1 for line in lines if line.endswith(self.stop_chars)) / len(lines)
+        thresholds["line_punct_ratio"] = ratio
         if ratio < self.line_punct_thr and not (ratio == 0 and self.line_punct_exclude_zero):
-            return False, "line_punct_ratio", ratio
+            return False, thresholds, "line_punct_ratio"
 
         ratio = sum(1 for line in lines if len(line) <= self.short_line_length) / len(lines)
+        thresholds["short_line_ratio"] = ratio
         if ratio > self.short_line_threshold:
-            return False, "short_line_ratio", ratio
+            return False, thresholds, "short_line_ratio"
 
         ratio = find_duplicates(lines)[1] / len(doc.text.replace("\n", ""))
-
+        thresholds["char_dup_ratio"] = ratio
         if ratio > self.char_duplicates_ratio:
-            return False, "char_dup_ratio", ratio
+            return False, thresholds, "char_dup_ratio"
 
         words = split_into_words(doc.text, self.language)
         new_line = doc.text.count("\n")
         ratio = new_line / len(words)
+        thresholds["list_ratio"] = ratio
         if ratio > self.new_line_ratio:
-            return False, "list_ratio", ratio
+            return False, thresholds, "list_ratio"
 
-        return True
+        return True, thresholds
