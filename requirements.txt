@@ -31,8 +31,6 @@ courlan==1.3.2
 cryptography==44.0.2
 cymem==2.0.11
 datasets==3.5.1
-# Editable install with no version control (datatrove-amalia==0.4.0)
--e /user/home/gv.martins/Amalia/datatrove_amalia
 dateparser==1.2.1
 dill @ file:///croot/dill_1715094664823/work
 docker==7.1.0
