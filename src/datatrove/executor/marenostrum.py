@@ -46,7 +46,10 @@ class MareNostrumExecutor(SlurmPipelineExecutor):
             if "export PYTHONUNBUFFERED=TRUE" in line:
                 # Add our export after this line
                 lines.insert(i + 1, 'export HF_HOME="/gpfs/projects/epor32/"')
-                lines.insert(i + 2, 'export PYTHONPATH="/gpfs/projects/epor32/gvmartins/arquivo-filter:$PYTHONPATH"')
+                lines.insert(i + 2, 'export TRANSFORMERS_CACHE="/gpfs/projects/epor32/hub"')
+                lines.insert(i + 3, 'export HF_ASSETS_CACHE="/gpfs/projects/epor32/assets"')
+                lines.insert(i + 4, 'export HF_HUB_CACHE="/gpfs/projects/epor32/hub"')
+                lines.insert(i + 5, 'export PYTHONPATH="/gpfs/projects/epor32/gvmartins/arquivo-filter:$PYTHONPATH"')
                 # lines.insert(i + 3, 'export PATH=$PATH:/gpfs/projects/epor32/gvmartins/datatrove_amalia/src/datatrove/tools')
                 break
 
