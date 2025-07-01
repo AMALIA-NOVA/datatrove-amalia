@@ -1,8 +1,16 @@
-# DataTrove
+# DataTrove AMALIA
 
-DataTrove is a library to process, filter and deduplicate text data at a very large scale. It provides a set of prebuilt commonly used processing blocks with a framework to easily add custom functionality.
+This is a fork of the Datatrove library developed for the AMALIA project. The changes include:
+- Creation of the [MareNostrumExecutor](src/datatrove/executor/marenostrum.py) to run pipelines on the MareNostrum cluster.
+- Creation of the [post-scraping blocks](src/datatrove/pipeline/post_scraping) to apply additional processing to the text after it has been extracted.
+- More statistics, related to the filters, are added to the metadata of the documents.
 
-DataTrove processing pipelines are platform-agnostic, running out of the box locally or on a slurm cluster. Its (relatively) low memory usage and multiple step design makes it ideal for large workloads, such as to process an LLM's training data.
+DataTrove is a library to process, filter and deduplicate text data at a very large scale. It provides a set of prebuilt
+commonly used processing blocks with a framework to easily add custom functionality.
+
+DataTrove processing pipelines are platform-agnostic, running out of the box locally or on a slurm cluster. Its (
+relatively) low memory usage and multiple step design makes it ideal for large workloads, such as to process an LLM's
+training data.
 
 Local, remote and other file systems are supported through [fsspec](https://filesystem-spec.readthedocs.io/en/latest/).
 
@@ -14,25 +22,27 @@ Local, remote and other file systems are supported through [fsspec](https://file
 - [Quickstart examples](#quickstart-examples)
 - [Terminology](#terminology)
 - [Pipeline](#pipeline)
-  * [DataTrove Document](#datatrove-document)
-  * [Types of pipeline blocks](#types-of-pipeline-blocks)
-  * [Full pipeline](#full-pipeline)
+    * [DataTrove Document](#datatrove-document)
+    * [Types of pipeline blocks](#types-of-pipeline-blocks)
+    * [Full pipeline](#full-pipeline)
 - [Executors](#executors)
-  * [LocalPipelineExecutor](#localpipelineexecutor)
-  * [SlurmPipelineExecutor](#slurmpipelineexecutor)
+    * [LocalPipelineExecutor](#localpipelineexecutor)
+    * [SlurmPipelineExecutor](#slurmpipelineexecutor)
+    * [MareNostrumExecutor](#marenostrumexecutor)
 - [Logging](#logging)
 - [DataFolder / paths](#datafolder--paths)
 - [Practical guides](#practical-guides)
-  * [Reading data](#reading-data)
-  * [Extracting text](#extracting-text)
-  * [Filtering data](#filtering-data)
-  * [Saving data](#saving-data)
-  * [Deduplicating data](#deduplicating-data)
-  * [Summary Statistics](#summary-statistics)
-  * [Custom blocks](#custom-blocks)
-    + [Simple data](#simple-data)
-    + [Custom function](#custom-function)
-    + [Custom block](#custom-block)
+    * [Reading data](#reading-data)
+    * [Extracting text](#extracting-text)
+    * [Post-scraping text](#post-scraping-text)
+    * [Filtering data](#filtering-data)
+    * [Saving data](#saving-data)
+    * [Deduplicating data](#deduplicating-data)
+    * [Summary Statistics](#summary-statistics)
+    * [Custom blocks](#custom-blocks)
+        + [Simple data](#simple-data)
+        + [Custom function](#custom-function)
+        + [Custom block](#custom-block)
 - [Contributing](#contributing)
 - [Citation](#citation)
 
@@ -40,63 +50,92 @@ Local, remote and other file systems are supported through [fsspec](https://file
 
 ## Installation
 
+Clone the repository, install the required packages in `requirements.txt` and install the local datatrove-amalia package as editable:
+
 ```bash
-pip install datatrove[FLAVOUR]
+pip install -e path/to/datatrove-amalia
 ```
-Available flavours (combine them with `,` i.e. `[processing,s3]`):
-- `all` installs everything: `pip install datatrove[all]`
-- `io` dependencies to read `warc/arc/wet` files and arrow/parquet formats: `pip install datatrove[io]`
-- `processing` dependencies for text extraction, filtering and tokenization: `pip install datatrove[processing]`
-- `s3` s3 support: `pip install datatrove[s3]`
-- `cli` for command line tools: `pip install datatrove[cli]`
 
 ## Quickstart examples
+
 You can check the following [examples](examples):
-- [fineweb.py](examples/fineweb.py) full reproduction of the [FineWeb dataset](https://huggingface.co/datasets/HuggingFaceFW/fineweb)
-- [process_common_crawl_dump.py](examples/process_common_crawl_dump.py) full pipeline to read commoncrawl warc files, extract their text content, filters and save the resulting data to s3. Runs on slurm
-- [tokenize_c4.py](examples/tokenize_c4.py) reads data directly from huggingface's hub to tokenize the english portion of the C4 dataset using the `gpt2` tokenizer
+
+- [fineweb.py](examples/fineweb.py) full reproduction of
+  the [FineWeb dataset](https://huggingface.co/datasets/HuggingFaceFW/fineweb)
+- [process_common_crawl_dump.py](examples/process_common_crawl_dump.py) full pipeline to read commoncrawl warc files,
+  extract their text content, filters and save the resulting data to s3. Runs on slurm
+- [tokenize_c4.py](examples/tokenize_c4.py) reads data directly from huggingface's hub to tokenize the english portion
+  of the C4 dataset using the `gpt2` tokenizer
 - [minhash_deduplication.py](examples/minhash_deduplication.py) full pipeline to run minhash deduplication of text data
 - [sentence_deduplication.py](examples/sentence_deduplication.py) example to run sentence level exact deduplication
-- [exact_substrings.py](examples/exact_substrings.py) example to run ExactSubstr (requires [this repo](https://github.com/google-research/deduplicate-text-datasets))
+- [exact_substrings.py](examples/exact_substrings.py) example to run ExactSubstr (
+  requires [this repo](https://github.com/google-research/deduplicate-text-datasets))
 
 ## Terminology
+
 - `pipeline`: a list of processing steps to execute (read data, filter, write to disk, etc)
 - `executor`: runs a specific pipeline on a given execution environment (slurm, multi cpu machine, etc)
 - `job`: the execution of a pipeline on a given executor
-- `task`: a `job` is comprised of multiple `tasks`, and these are used to parallelize execution, usually by having each `task` process a `shard` of data. Datatrove keeps track of which tasks have completed and when you relaunch only incomplete tasks will run.
+- `task`: a `job` is comprised of multiple `tasks`, and these are used to parallelize execution, usually by having each
+  `task` process a `shard` of data. Datatrove keeps track of which tasks have completed and when you relaunch only
+  incomplete tasks will run.
 - `file`: an individual input file (.json, .csv, etc).
-> [!TIP]
-> Note that each file will be processed by a single `task`. Datatrove does not automatically split a file into multiple parts, so to fully parallelize you should have multiple medium sized files rather than a single large file)
-- `shard`: a group of input data (usually a group of `file`s), which will be assigned to a specific `task`. Each `task` will process a different non overlapping `shard` of data, from the full list of input files
-- `worker`: compute resource that will execute a single task at a time, e.g., if you have 50 cpu cores you can run a LocalPipelineExecutor with `workers=50`, to execute 50 `tasks` simultaneously (one per cpu). Once a `worker` is done with a `task`, it will start processing another waiting `task`
 
 > [!TIP]
-> Your number of `tasks` controls how much you can parallelize and also how much time each individual processing unit will take. If you have a small number of tasks (and they each therefore have to process a large number of files) and they fail, you will have to restart from scratch, whereas if you have a larger number of small tasks each failed task will take way less time to rerun.
+> Note that each file will be processed by a single `task`. Datatrove does not automatically split a file into multiple
+> parts, so to fully parallelize you should have multiple medium sized files rather than a single large file)
+
+- `shard`: a group of input data (usually a group of `file`s), which will be assigned to a specific `task`. Each `task`
+  will process a different non overlapping `shard` of data, from the full list of input files
+- `worker`: compute resource that will execute a single task at a time, e.g., if you have 50 cpu cores you can run a
+  LocalPipelineExecutor with `workers=50`, to execute 50 `tasks` simultaneously (one per cpu). Once a `worker` is done
+  with a `task`, it will start processing another waiting `task`
+
+> [!TIP]
+> Your number of `tasks` controls how much you can parallelize and also how much time each individual processing unit
+> will take. If you have a small number of tasks (and they each therefore have to process a large number of files) and
+> they fail, you will have to restart from scratch, whereas if you have a larger number of small tasks each failed task
+> will take way less time to rerun.
 
 > [!CAUTION]
-> If your `tasks` > `files`, some tasks will not process any data, so there usually isn't a point in setting `tasks` to a number larger than `files`.
+> If your `tasks` > `files`, some tasks will not process any data, so there usually isn't a point in setting `tasks` to
+> a number larger than `files`.
 
-### Example 
-Running a `job` to process **10000** `files`, on a machine with **100** cpu cores (`workers`). If we choose to use **1000** tasks, each one will process a `shard` of 10 files. `workers=100` means that we can process **100** tasks at a time.
+### Example
+
+Running a `job` to process **10000** `files`, on a machine with **100** cpu cores (`workers`). If we choose to use *
+*1000** tasks, each one will process a `shard` of 10 files. `workers=100` means that we can process **100** tasks at a
+time.
 
 ## Pipeline
+
 ### DataTrove Document
+
 Each pipeline block processes data in the datatrove [`Document`](src/datatrove/data.py) format:
+
 - `text` the actual text content for each sample
 - `id` a unique id (string) for this sample
 - `metadata` a dictionary where any additional info may be stored
 
 ### Types of pipeline blocks
+
 Each pipeline block takes a generator of `Document` as input and returns another generator of `Document`.
+
 - **[readers](src/datatrove/pipeline/readers)** read data from different formats and yield `Document`
 - **[writers](src/datatrove/pipeline/writers)** save `Document` to disk/cloud in different formats
 - **[extractors](src/datatrove/pipeline/extractors)** extract text content from raw formats (such as webpage html)
 - **[filters](src/datatrove/pipeline/filters)** filter out (remove) some `Document`s based on specific rules/criteria
-- **[stats](src/datatrove/pipeline/stats)** blocks to collect statistics on the dataset
+- **[post-scrapers](src/datatrove/pipeline/post_scraping)** apply post-processing to the data after it has been scraped
+- **[stats](src/datatrove/pipeline/stats[post_scraping](src/datatrove/pipeline/post_scraping))** blocks to collect
+  statistics on the dataset
 - **[tokens](src/datatrove/pipeline/tokens)** blocks to tokenize data or count tokens
 - **[dedup](src/datatrove/pipeline/dedup)** blocks for deduplication
+
 ### Full pipeline
-A pipeline is defined as a list of pipeline blocks. As an example, the following pipeline would read data from disk, randomly filter (remove) some documents and write them back to disk:
+
+A pipeline is defined as a list of pipeline blocks. As an example, the following pipeline would read data from disk,
+randomly filter (remove) some documents and write them back to disk:
+
 ```python
 from datatrove.pipeline.readers import CSVReader
 from datatrove.pipeline.filters import SamplerFilter
@@ -114,30 +153,40 @@ pipeline = [
 ```
 
 ## Executors
-Pipelines are platform-agnostic, which means that the same pipeline can smoothly run on different execution environments without any changes to its steps. Each environment has its own PipelineExecutor.
+
+Pipelines are platform-agnostic, which means that the same pipeline can smoothly run on different execution environments
+without any changes to its steps. Each environment has its own PipelineExecutor.
 
 Some options common to all executors:
+
 - `pipeline` a list consisting of the pipeline steps that should be run
-- `logging_dir` a datafolder where log files, statistics and more should be saved. Do not reuse folders for different pipelines/jobs as this will overwrite your stats, logs and completions.
-- `skip_completed` (_bool_, `True` by default) datatrove keeps track of completed tasks so that when you relaunch a job they can be skipped. Set this to `False` to disable this behaviour
-- `randomize_start_duration` (_int_, `0` by default) the maximum number of seconds to delay the start of each task to prevent all tasks from starting simultaneously and potentially overloading the system. 
+- `logging_dir` a datafolder where log files, statistics and more should be saved. Do not reuse folders for different
+  pipelines/jobs as this will overwrite your stats, logs and completions.
+- `skip_completed` (_bool_, `True` by default) datatrove keeps track of completed tasks so that when you relaunch a job
+  they can be skipped. Set this to `False` to disable this behaviour
+- `randomize_start_duration` (_int_, `0` by default) the maximum number of seconds to delay the start of each task to
+  prevent all tasks from starting simultaneously and potentially overloading the system.
 
 Call an executor's `run` method to execute its pipeline.
 
 
 > [!TIP]
-> Datatrove keeps track of which tasks successfully completed by creating a marker (an empty file) in the `${logging_dir}/completions` folder. Once the job finishes, if some of its tasks have failed, you can **simply relaunch the exact same executor** and datatrove will check and only run the tasks that were not previously completed.
+> Datatrove keeps track of which tasks successfully completed by creating a marker (an empty file) in the
+`${logging_dir}/completions` folder. Once the job finishes, if some of its tasks have failed, you can **simply relaunch
+the exact same executor** and datatrove will check and only run the tasks that were not previously completed.
 
 > [!CAUTION]
-> If you relaunch a pipeline because some tasks failed, **do not change the total number of tasks** as this will affect the distribution of input files/sharding.
-
-
+> If you relaunch a pipeline because some tasks failed, **do not change the total number of tasks** as this will affect
+> the distribution of input files/sharding.
 
 ### LocalPipelineExecutor
+
 This executor will launch a pipeline on a local machine.
 Options:
+
 - `tasks` total number of tasks to run
-- `workers` how many tasks to run simultaneously. If `-1`, no limit. Anything `> 1` will use multiprocessing to execute the tasks.
+- `workers` how many tasks to run simultaneously. If `-1`, no limit. Anything `> 1` will use multiprocessing to execute
+  the tasks.
 - `start_method` method to use to spawn a multiprocessing Pool. Ignored if `workers` is 1
 
 <details>
@@ -145,6 +194,7 @@ Options:
 
 ```python
 from datatrove.executor import LocalPipelineExecutor
+
 executor = LocalPipelineExecutor(
     pipeline=[
         ...
@@ -155,30 +205,44 @@ executor = LocalPipelineExecutor(
 )
 executor.run()
 ```
+
 </details>
 
 <details>
   <summary>Multi-node parallelism</summary>
 
-You can have different nodes/machines process different parts of the total tasks by using the `local_tasks` and `local_rank_offset`. For each node/instance/machine, launch with the following options:
-- `tasks` the total tasks to be executed (across all machines). **This value must be the same on each machine or the input file distribution may overlap!** Example: 500
-- `local_tasks` how many tasks of the total will be executed on this particular machine. Note that you can use different values for each machine. Example: 100
-- `local_rank_offset` the rank of the first task to be executed on this machine. If this is the 3rd machine where you are launching a job, and the 2 previous machines each ran 250 and 150 jobs, this would be `400` for the current machine.
+You can have different nodes/machines process different parts of the total tasks by using the `local_tasks` and
+`local_rank_offset`. For each node/instance/machine, launch with the following options:
 
-To get final merged stats you will have to invoke the `merge_stats` script manually on a path containing the stats from all machines.
+- `tasks` the total tasks to be executed (across all machines). **This value must be the same on each machine or the
+  input file distribution may overlap!** Example: 500
+- `local_tasks` how many tasks of the total will be executed on this particular machine. Note that you can use different
+  values for each machine. Example: 100
+- `local_rank_offset` the rank of the first task to be executed on this machine. If this is the 3rd machine where you
+  are launching a job, and the 2 previous machines each ran 250 and 150 jobs, this would be `400` for the current
+  machine.
+
+To get final merged stats you will have to invoke the `merge_stats` script manually on a path containing the stats from
+all machines.
 </details>
 
 ### SlurmPipelineExecutor
+
 This executor will launch a pipeline on a slurm cluster, using slurm job arrays to group and manage tasks.
 Options:
+
 - `tasks` total number of tasks to run. **required**
 - `time` slurm time limit string. **required**
 - `partition` slurm partition. **required**
-- `workers` how many tasks to run simultaneously. If `-1`, no limit. Slurm will run `workers` tasks at a time. (default: `-1`)
+- `workers` how many tasks to run simultaneously. If `-1`, no limit. Slurm will run `workers` tasks at a time. (default:
+  `-1`)
 - `job_name` slurm job name (default: "data_processing)
-- `depends` another SlurmPipelineExecutor instance, which will be a dependency of this pipeline (current pipeline will only start executing after the depended on pipeline successfully completes)
+- `depends` another SlurmPipelineExecutor instance, which will be a dependency of this pipeline (current pipeline will
+  only start executing after the depended on pipeline successfully completes)
 - `sbatch_args` dictionary with any other arguments you would like to pass to sbatch
-- `slurm_logs_folder` where to save the slurm log files. If using a local path for `logging_dir`, they will be saved on `logging_dir/slurm_logs`. If not, they will be saved as a subdir of the current directory.
+- `slurm_logs_folder` where to save the slurm log files. If using a local path for `logging_dir`, they will be saved on
+  `logging_dir/slurm_logs`. If not, they will be saved as a subdir of the current directory.
+
 <details>
   <summary>Other options</summary>
 
@@ -188,17 +252,23 @@ Options:
 - `env_command` custom command to activate a python environment, if needed
 - `condaenv` conda environment to activate
 - `venv_path` path to a python environment to activate
-- `max_array_size` the _MaxArraySize_ value in `$ scontrol show config`. If number of tasks exceeds this number, it will split into multiple array jobs (default: 1001)
-- `max_array_launch_parallel` if we need multiple jobs due to max_array_size, whether to launch them all in one go (parallel) or sequentially (default: `False`)
-- `stagger_max_array_jobs` when max_array_launch_parallel is True, this determines how many seconds to wait between launching each of the parallel jobs (default: `0`)
+- `max_array_size` the _MaxArraySize_ value in `$ scontrol show config`. If number of tasks exceeds this number, it will
+  split into multiple array jobs (default: 1001)
+- `max_array_launch_parallel` if we need multiple jobs due to max_array_size, whether to launch them all in one go (
+  parallel) or sequentially (default: `False`)
+- `stagger_max_array_jobs` when max_array_launch_parallel is True, this determines how many seconds to wait between
+  launching each of the parallel jobs (default: `0`)
 - `run_on_dependency_fail` start executing when a job we depend on finishes even if it has failed (default: `False`)
-- `randomize_start` randomize the start of each task in a job in a ~3 min window. Useful when heavily hitting an s3 bucket for example. (default: `False`)
+- `randomize_start` randomize the start of each task in a job in a ~3 min window. Useful when heavily hitting an s3
+  bucket for example. (default: `False`)
+
 </details>
 <details>
   <summary>Example executor</summary>
 
 ```python
 from datatrove.executor import SlurmPipelineExecutor
+
 executor1 = SlurmPipelineExecutor(
     pipeline=[
         ...
@@ -222,11 +292,18 @@ executor2 = SlurmPipelineExecutor(
     depends=executor1  # this pipeline will only be launched after executor1 successfully completes
 )
 # executor1.run()
-executor2.run() # this will actually launch executor1, as it is a dependency, so no need to launch it explicitly
+executor2.run()  # this will actually launch executor1, as it is a dependency, so no need to launch it explicitly
 ```
+
 </details>
 
+### MareNostrumExecutor
+
+Very similar to the `SlurmPipelineExecutor`, but specific for the MareNostrum cluster. It defines environment
+variables and does not ask for memory automatically (since it is not allowed in MareNostrum).
+
 ## Logging
+
 For a pipeline with `logging_dir` **mylogspath/exp1**, the following folder structure would be created:
 
 <details>
@@ -246,22 +323,33 @@ For a pipeline with `logging_dir` **mylogspath/exp1**, the following folder stru
     │   └──[00000.json, 00001.json, 00002.json, ...] ⟵ individual stats for each task (number of samples processed, filtered, removed, etc)
     └── stats.json ⟵ global stats from all tasks
 ```
+
 </details>
 
 ### Colorization
-Log messages support colorization. By default, colorization will be auto detected for console messages and disabled for log files (logs/task_XXXXX.log).
+
+Log messages support colorization. By default, colorization will be auto detected for console messages and disabled for
+log files (logs/task_XXXXX.log).
 To explicitly enable or disable colorization, you may set the following environment variables:
+
 - `DATATROVE_COLORIZE_LOGS` "1" to add ANSI colors to console log messages and "0" to disable colorization.
 - `DATATROVE_COLORIZE_LOG_FILES` set to "1" to add ANSI colors to log messages saved to logs/task_XXXXX.log.
 
 ## DataFolder / paths
-Datatrove supports a wide variety of input/output sources through [fsspec](https://filesystem-spec.readthedocs.io/en/latest/).
 
-There are a few ways to provide a path to a datatrove block (for `input_folder`, `logging_dir`, `data_folder` and so on arguments):
-- `str`: the simplest way is to pass a single string. Example: `/home/user/mydir`, `s3://mybucket/myinputdata`, `hf://datasets/allenai/c4/en/`
+Datatrove supports a wide variety of input/output sources
+through [fsspec](https://filesystem-spec.readthedocs.io/en/latest/).
 
-- `(str, fsspec filesystem instance)`: a string path and a fully initialized filesystem object. Example: `("s3://mybucket/myinputdata", S3FileSystem(client_kwargs={"endpoint_url": endpoint_uri}))`
-- `(str, dict)`: a string path and a dictionary with options to initialize a fs. Example (equivalent to the previous line): `("s3://mybucket/myinputdata", {"client_kwargs": {"endpoint_url": endpoint_uri}})`
+There are a few ways to provide a path to a datatrove block (for `input_folder`, `logging_dir`, `data_folder` and so on
+arguments):
+
+- `str`: the simplest way is to pass a single string. Example: `/home/user/mydir`, `s3://mybucket/myinputdata`,
+  `hf://datasets/allenai/c4/en/`
+
+- `(str, fsspec filesystem instance)`: a string path and a fully initialized filesystem object. Example:
+  `("s3://mybucket/myinputdata", S3FileSystem(client_kwargs={"endpoint_url": endpoint_uri}))`
+- `(str, dict)`: a string path and a dictionary with options to initialize a fs. Example (equivalent to the previous
+  line): `("s3://mybucket/myinputdata", {"client_kwargs": {"endpoint_url": endpoint_uri}})`
 - `DataFolder`: you can initialize a [DataFolder](src/datatrove/io.py) object directly and pass it as an argument
 
 Under the hood these argument combinations are parsed by [`get_datafolder`](src/datatrove/io.py#116).
@@ -269,37 +357,63 @@ Under the hood these argument combinations are parsed by [`get_datafolder`](src/
 ## Practical guides
 
 ### Reading data
+
 Usually, pipelines will start with a [Reader](src/datatrove/pipeline/readers) block.
 Most readers take a `data_folder` argument — a path to a folder containing the data to be read.
 
-These files will be distributed across each task. If you have `N` tasks, task with rank `i` (0-based) will process files `i, i+N, i+2N, i+3N,...`.
+These files will be distributed across each task. If you have `N` tasks, task with rank `i` (0-based) will process files
+`i, i+N, i+2N, i+3N,...`.
 
 Internally, each reader reads data and converts it into a dictionary before creating a `Document` object.
 
 Some options common to most readers:
+
 - `text_key` the dictionary key containing the text content for each sample. Default: `text`
 - `id_key` the dictionary key containing the id for each sample. Default: `id`
-- `default_metadata` a dictionary for any default metadata values you would like to add (such as their source, for example)
+- `default_metadata` a dictionary for any default metadata values you would like to add (such as their source, for
+  example)
 - `recursive` whether to look for files recursively in `data_folder`'s subdirectories
-- `glob_pattern` use this field to match specific files. For instance, `glob_pattern="*/warc/*.warc.gz"` will match files with a `.warc.gz` file extension on the `warc/` folder of each of the `data_folder`'s subdirectories
-- `adapter` this function takes the raw dictionary obtained from the reader and returns a dictionary with `Document`'s field names. You may overwrite this function ([_default_adapter](src/datatrove/pipeline/readers/base.py)) if you would like.
+- `glob_pattern` use this field to match specific files. For instance, `glob_pattern="*/warc/*.warc.gz"` will match
+  files with a `.warc.gz` file extension on the `warc/` folder of each of the `data_folder`'s subdirectories
+- `adapter` this function takes the raw dictionary obtained from the reader and returns a dictionary with `Document`'s
+  field names. You may overwrite this function ([_default_adapter](src/datatrove/pipeline/readers/base.py)) if you would
+  like.
 - `limit` read only a certain number of samples. Useful for testing/debugging
 
 ### Extracting text
-You can use [extractors](src/datatrove/pipeline/extractors) to extract text content from raw html. The most commonly used extractor in datatrove is [Trafilatura](src/datatrove/pipeline/extractors/trafilatura.py), which uses the [trafilatura](https://trafilatura.readthedocs.io/en/latest/) library.
+
+You can use [extractors](src/datatrove/pipeline/extractors) to extract text content from raw html. The most commonly
+used extractor in datatrove is [Trafilatura](src/datatrove/pipeline/extractors/trafilatura.py), which uses
+the [trafilatura](https://trafilatura.readthedocs.io/en/latest/) library.
+
+### Post-Scraping text
+
+You can use [post-scraping blocks](src/datatrove/pipeline/post_scraping) to apply additional processing to the text
+after it has been extracted. These blocks are usually used to clean up the text, such has by removing duplicate and/or
+short lines.
 
 ### Filtering data
-[Filters](src/datatrove/pipeline/filters) are some of the most important blocks of any data processing pipeline. Datatrove's filter blocks take a `Document` and return a boolean (`True` to keep a document, `False` to remove it). Removed samples do not continue to the next pipeline stage. You can also save the removed samples to disk by passing a [Writer](src/datatrove/pipeline/writers) to the `exclusion_writer` parameter.
+
+[Filters](src/datatrove/pipeline/filters) are some of the most important blocks of any data processing pipeline.
+Datatrove's filter blocks take a `Document` and return a boolean (`True` to keep a document, `False` to remove it).
+Removed samples do not continue to the next pipeline stage. You can also save the removed samples to disk by passing
+a [Writer](src/datatrove/pipeline/writers) to the `exclusion_writer` parameter.
 
 ### Saving data
-Once you are done processing your data you will probably want to save it somewhere. For this you can use a [writer](src/datatrove/pipeline/writers/jsonl.py).
-Writers require an `output_folder` (the path where data should be saved). You can choose the `compression` to use (default: `gzip`) and the filename to save each file as.
+
+Once you are done processing your data you will probably want to save it somewhere. For this you can use
+a [writer](src/datatrove/pipeline/writers/jsonl.py).
+Writers require an `output_folder` (the path where data should be saved). You can choose the `compression` to use (
+default: `gzip`) and the filename to save each file as.
 For the `output_filename`, a template is applied using the following arguments:
-- `${rank}` replaced with the current task's rank. Note that if this tag isn't present, **different tasks may try to write to the same location**
+
+- `${rank}` replaced with the current task's rank. Note that if this tag isn't present, **different tasks may try to
+  write to the same location**
 - `${id}` replaced with the sample id
 - metadata: any other `${tag}` will be replaced with the corresponding `document.metadata['tag']` value
 
 An example to separate samples by language based on their `lang` metadata field:
+
 ```
 JsonlWriter(
     f"{MAIN_OUTPUT_PATH}/non_english/",
@@ -308,20 +422,32 @@ JsonlWriter(
 ```
 
 ### Deduplicating data
-For deduplication check the examples [minhash_deduplication.py](examples/minhash_deduplication.py), [sentence_deduplication.py](examples/sentence_deduplication.py) and [exact_substrings.py](examples/exact_substrings.py).
+
+For deduplication check the
+examples [minhash_deduplication.py](examples/minhash_deduplication.py), [sentence_deduplication.py](examples/sentence_deduplication.py)
+and [exact_substrings.py](examples/exact_substrings.py).
 
 ### Summary Statistics
-For summary statistics on your data you can use the [Stats](src/datatrove/pipeline/stats/summary_stats/) blocks. These blocks provide an easy way to collect data-profiles on your dataset in a distributed manner. It's a two step process in which you first:
-1) For each shard iterate over documents and collect stats into of the following groupings `summary` (all docs counted to "summary" key), `fqdn` (fully qualified domain name grouping), `suffix` (the last part of the url path grouping) or `histogram` (value based grouping).
-2) Merge the stats from different shards into a single file.
-See the [summary_stats.py](examples/summarty_stats.py) for more details.
 
-Each resulting stat is saved in a separate file with following structure: `output_folder/{fqdn,suffix,summary,histogram}/{stat_name}/metric.json`
+For summary statistics on your data you can use the [Stats](src/datatrove/pipeline/stats/summary_stats/) blocks. These
+blocks provide an easy way to collect data-profiles on your dataset in a distributed manner. It's a two step process in
+which you first:
+
+1) For each shard iterate over documents and collect stats into of the following groupings `summary` (all docs counted
+   to "summary" key), `fqdn` (fully qualified domain name grouping), `suffix` (the last part of the url path grouping)
+   or `histogram` (value based grouping).
+2) Merge the stats from different shards into a single file.
+   See the [summary_stats.py](examples/summarty_stats.py) for more details.
+
+Each resulting stat is saved in a separate file with following structure:
+`output_folder/{fqdn,suffix,summary,histogram}/{stat_name}/metric.json`
 
 Each such file is a `MetricStatsDict` object, which you can easily load using:
+
 ```python
 from datatrove.pipeline.stats.summary_stats import MetricStatsDict
 import json
+
 stats = MetricStatsDict.from_dict(json.load(open("fqdn/length/metric.json")))
 
 # E.g for total length of nytimes.com docs
@@ -332,27 +458,39 @@ stats["cnn.com"].mean
 ```
 
 Following stats are available:
+
 - `contamination_stats.py`: `word_contamination_{words[0]}`: Frequency of words contamination in the document.
-- `doc_stats.py`: `length`: Length of the document, `white_space_ratio`: Ratio of whitespace characters, `non_alpha_digit_ratio`: Ratio of non-alphabetic and non-digit characters, `digit_ratio`: Ratio of digits, `uppercase_ratio`: Ratio of uppercase letters, `elipsis_ratio`: Ratio of elipsis characters, `punctuation_ratio`: Punctuation ratio
-- `lang_stats.py`: `fasttext_{language}`: Score of document being written in `language`. Score is computed using FastText model.
-- `line_stats.py`: `n_lines`: Number of lines per doc, `avg_line_length`: Average length of line per doc, `long_line_ratio_chars_{chars}`: Ratio of lines with more than k chars, `short_line_ratio_chars_{chars}`: Ratio of lines with less than k chars, `bullet_point_lines_ratio`: Ratio of line starting with bullet point, `line_duplicates`: Ratio of lines that are duplicates, `line_char_duplicates`: Ratio of chars in duplicated lines to all chars.
-- `paragraph_stats.py`: `n_paragraphs`: Number of paragraphs, `avg_paragraph_length`: Average paragraph length, `short_paragraph_ratio_{chars}`: Ratio of short paragraphs (`<{chars}` chars), `long_paragraph_ratio_{chars}`: Ratio of long paragraphs (`>{chars}` chars)
-- `perplexity_stats.py`: `ccnet_perplexity_{model_dataset}_{language}`: Perplexity of the document using the CCNet model for `{model}` on `{dataset}` in `{language}`
-- `sentence_stats.py`: `n_sentences`: Number of sentences, `avg_sentence_length`: Average sentence length, `short_sentence_ratio_{chars}`: Ratio of short sentences (`<{chars}` chars), `long_sentence_ratio_{chars}`: Ratio of long sentences (`>{chars}` chars)
+- `doc_stats.py`: `length`: Length of the document, `white_space_ratio`: Ratio of whitespace characters,
+  `non_alpha_digit_ratio`: Ratio of non-alphabetic and non-digit characters, `digit_ratio`: Ratio of digits,
+  `uppercase_ratio`: Ratio of uppercase letters, `elipsis_ratio`: Ratio of elipsis characters, `punctuation_ratio`:
+  Punctuation ratio
+- `lang_stats.py`: `fasttext_{language}`: Score of document being written in `language`. Score is computed using
+  FastText model.
+- `line_stats.py`: `n_lines`: Number of lines per doc, `avg_line_length`: Average length of line per doc,
+  `long_line_ratio_chars_{chars}`: Ratio of lines with more than k chars, `short_line_ratio_chars_{chars}`: Ratio of
+  lines with less than k chars, `bullet_point_lines_ratio`: Ratio of line starting with bullet point, `line_duplicates`:
+  Ratio of lines that are duplicates, `line_char_duplicates`: Ratio of chars in duplicated lines to all chars.
+- `paragraph_stats.py`: `n_paragraphs`: Number of paragraphs, `avg_paragraph_length`: Average paragraph length,
+  `short_paragraph_ratio_{chars}`: Ratio of short paragraphs (`<{chars}` chars), `long_paragraph_ratio_{chars}`: Ratio
+  of long paragraphs (`>{chars}` chars)
+- `perplexity_stats.py`: `ccnet_perplexity_{model_dataset}_{language}`: Perplexity of the document using the CCNet model
+  for `{model}` on `{dataset}` in `{language}`
+- `sentence_stats.py`: `n_sentences`: Number of sentences, `avg_sentence_length`: Average sentence length,
+  `short_sentence_ratio_{chars}`: Ratio of short sentences (`<{chars}` chars), `long_sentence_ratio_{chars}`: Ratio of
+  long sentences (`>{chars}` chars)
 - `token_stats.py`:`token_count`: Number of tokens in the document
-- `word_stats.py`: `n_words`: Number of words in the document, `avg_word_length`: Average length of words in the document, `avg_words_per_line`: Average number of words per line in the document, `short_word_ratio_{chars}`: Ratio of words shorter than `{chars}` characters, `stop_word_ratio`: Ratio of stop words, `long_word_ratio_{chars}`: Ratio of words longer than `{chars}` characters, `type_token_ratio`: Number of unique words / Number of tokens, `capitalized_word_ratio`: Ratio of capitalized words, `uppercase_word_ratio`: Ratio of uppercase words
-
-
-
-
-
-
-
+- `word_stats.py`: `n_words`: Number of words in the document, `avg_word_length`: Average length of words in the
+  document, `avg_words_per_line`: Average number of words per line in the document, `short_word_ratio_{chars}`: Ratio of
+  words shorter than `{chars}` characters, `stop_word_ratio`: Ratio of stop words, `long_word_ratio_{chars}`: Ratio of
+  words longer than `{chars}` characters, `type_token_ratio`: Number of unique words / Number of tokens,
+  `capitalized_word_ratio`: Ratio of capitalized words, `uppercase_word_ratio`: Ratio of uppercase words
 
 ### Custom blocks
 
 #### Simple data
+
 You can pass an iterable of [`Document`](src/datatrove/data.py) directly as a pipeline block like so:
+
 ```python
 from datatrove.data import Document
 from datatrove.pipeline.filters import SamplerFilter
@@ -371,13 +509,17 @@ pipeline = [
 ]
 ```
 
-Do note, however, that this iterable will not be sharded (if you launch more than 1 task they will all get the full iterable).
+Do note, however, that this iterable will not be sharded (if you launch more than 1 task they will all get the full
+iterable).
 This is usually useful for small workloads/testing.
 
 #### Custom function
+
 For simple processing you can simply pass in a custom function with the following signature:
+
 ```python
 from datatrove.data import DocumentsPipeline
+
 
 def uppercase_everything(data: DocumentsPipeline, rank: int = 0, world_size: int = 1) -> DocumentsPipeline:
     """
@@ -388,17 +530,22 @@ def uppercase_everything(data: DocumentsPipeline, rank: int = 0, world_size: int
         document.text = document.text.upper()
         yield document
 
+
 pipeline = [
     ...,
     uppercase_everything,
     ...
 ]
 ```
+
 > [!TIP]
-> You might have some pickling issues due to the imports. If this happens, simply move whatever imports you need inside the function body.
+> You might have some pickling issues due to the imports. If this happens, simply move whatever imports you need inside
+> the function body.
 
 #### Custom block
-You can also define a full block inheriting from [`PipelineStep`](src/datatrove/pipeline/base.py) or one of its subclasses:
+
+You can also define a full block inheriting from [`PipelineStep`](src/datatrove/pipeline/base.py) or one of its
+subclasses:
 
 ```python
 from datatrove.pipeline.base import PipelineStep
@@ -416,7 +563,8 @@ class UppercaserBlock(PipelineStep):
 
     def run(self, data: DocumentsPipeline, rank: int = 0, world_size: int = 1) -> DocumentsPipeline:
         # you could also load data from the `some_folder`:
-        for filepath in self.some_folder.get_shard(rank, world_size): # it also accepts a glob pattern, among other things
+        for filepath in self.some_folder.get_shard(rank,
+                                                   world_size):  # it also accepts a glob pattern, among other things
             with self.some_folder.open(filepath, "rt") as f:
                 # do something
                 ...
@@ -453,7 +601,11 @@ pipeline = [
 ]
 ```
 
-You could also inherit from [`BaseExtractor`](src/datatrove/pipeline/extractors/base.py), [`BaseFilter`](src/datatrove/pipeline/filters/base_filter.py), [`BaseReader`/`BaseDiskReader`](src/datatrove/pipeline/readers/base.py), or [`DiskWriter`](src/datatrove/pipeline/writers/disk_base.py).
+You could also inherit from [`BaseExtractor`](src/datatrove/pipeline/extractors/base.py), [
+`BaseFilter`](src/datatrove/pipeline/filters/base_filter.py), [`BaseReader`/
+`BaseDiskReader`](src/datatrove/pipeline/readers/base.py), or [
+`DiskWriter`](src/datatrove/pipeline/writers/disk_base.py).
+
 ## Contributing
 
 ```bash
@@ -462,11 +614,13 @@ pip install -e ".[dev]"
 ```
 
 Install pre-commit code style hooks:
+
 ```bash
 pre-commit install
 ```
 
 Run the tests:
+
 ```bash
 pytest -sv ./tests/
 ```
