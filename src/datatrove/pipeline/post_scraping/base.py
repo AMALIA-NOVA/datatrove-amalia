@@ -1,9 +1,10 @@
 from abc import abstractmethod
-
+import contextlib
 from datatrove.pipeline.base import PipelineStep
 from datatrove.data import DocumentsPipeline
 from datatrove.utils.typeshelper import StatHints
 from datatrove.utils.logging import logger
+from datatrove.pipeline.writers.disk_base import DiskWriter
 
 
 class BasePostScraper(PipelineStep):
@@ -18,10 +19,12 @@ class BasePostScraper(PipelineStep):
 
     def __init__(
             self,
+            exclusion_writer: DiskWriter = None,
             text_key: str = "text",
             id_key: str = "id",
     ):
         super().__init__()
+        self.exclusion_writer = exclusion_writer
         self.text_key = text_key
         self.id_key = id_key
 
@@ -50,25 +53,32 @@ class BasePostScraper(PipelineStep):
         Returns:
 
         """
-        for doc in data:
-            self.stat_update(StatHints.total)
-            with self.track_time():
-                try:
-                    doc.text = self.post_scrape(doc.text)
-                    self.stat_update("post-scraped")
-                except EOFError:
-                    # Process died unexpectedly
-                    self.stat_update("broken_process")
-                    logger.warning("Process died unexpectedly, will create new process for next document")
-                    continue
-                except Exception as e:
-                    self.stat_update("post-scraping_error")
-                    logger.warning(
-                        f'❌ Error "{e}" while post-scraping record text. Skipping record. '
-                        f"This message will only appear once."
-                    )
-                    continue
+        with self.exclusion_writer if self.exclusion_writer else contextlib.nullcontext() as writer:
+            for doc in data:
+                self.stat_update(StatHints.total)
+                with self.track_time():
+                    try:
+                        scraped_text = self.post_scrape(doc.text)
+                        self.stat_update("post-scraped")
 
-            if doc.text:
-                self.update_doc_stats(doc)
-                yield doc
+                        if scraped_text:
+                            doc.text = scraped_text
+                            self.update_doc_stats(doc)
+                            self.stat_update(StatHints.forwarded)
+                            yield doc
+                        else:
+                            self.stat_update(StatHints.dropped)
+                            if self.exclusion_writer:
+                                writer.write(doc, rank)
+                    except EOFError:
+                        # Process died unexpectedly
+                        self.stat_update("broken_process")
+                        logger.warning("Process died unexpectedly, will create new process for next document")
+                        continue
+                    except Exception as e:
+                        self.stat_update("post-scraping_error")
+                        logger.warning(
+                            f'❌ Error "{e}" while post-scraping record text. Skipping record. '
+                            f"This message will only appear once."
+                        )
+                        continue
