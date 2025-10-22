@@ -3,6 +3,7 @@ from datatrove.pipeline.post_scraping.base import BasePostScraper
 from datatrove.utils.logging import logger
 from datatrove.pipeline.writers.disk_base import DiskWriter
 from bs4 import BeautifulSoup
+import re
 
 
 class PostScraper(BasePostScraper):
@@ -11,10 +12,11 @@ class PostScraper(BasePostScraper):
     Args:
         text_key: the key containing the text data (default: "text").
         id_key: the key containing the id for each sample (default: "id").
-        remove_short_lines: whether to remove lines shorter than 10 characters (default: True).
-        remove_dup_lines: whether to remove duplicated lines (default: True).
-        remove_no_punct_lines: whether to remove lines that do not end with a punctuation mark (default: True).
-        remove_html_tags: whether to remove HTML tags from the text (default: True).
+        remove_short_lines: whether to remove lines shorter than 10 characters (default: False).
+        remove_dup_lines: whether to remove duplicated lines (default: False).
+        remove_no_punct_lines: whether to remove lines that do not end with a punctuation mark (default: False).
+        remove_html_tags: whether to remove HTML tags from the text (default: False).
+        remove_pt_phone_numbers: whether to remove pt phone numbers from the text (default: False).
     """
 
     name = "🧹 POST-SCRAPER"
@@ -29,6 +31,7 @@ class PostScraper(BasePostScraper):
         remove_dup_lines: bool = False,
         remove_no_punct_lines: bool = False,
         remove_html_tags: bool = False,
+        remove_pt_phone_numbers: bool = False,
     ):
         super().__init__(
             exclusion_writer,
@@ -39,6 +42,7 @@ class PostScraper(BasePostScraper):
         self.remove_short_lines = remove_short_lines
         self.remove_no_punct_lines = remove_no_punct_lines
         self.remove_html_tags = remove_html_tags
+        self.remove_pt_phone_numbers = remove_pt_phone_numbers
 
     def post_scrape(self, text):
         """Post-scrape the text data."""
@@ -54,6 +58,9 @@ class PostScraper(BasePostScraper):
 
         if self.remove_html_tags:
             text = self.html_tags_remover(text)
+
+        if self.remove_pt_phone_numbers:
+            text = self.phone_numbers_remover(text)
 
         return text
 
@@ -112,3 +119,22 @@ class PostScraper(BasePostScraper):
         clean_text = soup.get_text()
 
         return clean_text.strip() if clean_text else ""
+
+
+
+    def phone_numbers_remover(self, text):
+        """Remove pt phone numbers from the text."""
+        if not text:
+            return text
+
+        pattern = r'(00351|\+351)((?:\s?\d){9})'
+
+        # Replacement function to preserve the original prefix
+        def replace_with_default(match):
+            prefix = match.group(1)
+            return f"{prefix}900000000"
+
+        updated_text = re.sub(pattern, replace_with_default, text)
+
+        return updated_text
+
