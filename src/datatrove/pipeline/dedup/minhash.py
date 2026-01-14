@@ -550,6 +550,7 @@ class MinhashDedupFilter(PipelineStep):
     """Minhash Deduplication: Fourth (and final) Pipeline Step
 
     Filter the documents based on the minhash clusters to keep only one per cluster
+    or, in annotate-only mode, keep all documents but add cluster metadata.
     """
 
     type = "🫂 - DEDUP"
@@ -562,6 +563,7 @@ class MinhashDedupFilter(PipelineStep):
         load_cluster_ids: bool = False,
         load_cluster_sizes: bool = False,
         lines_to_buffer: int = 5,
+        keep_all: bool = False,
     ):
         super().__init__()
         self.data_folder = get_datafolder(input_folder)
@@ -569,9 +571,10 @@ class MinhashDedupFilter(PipelineStep):
         self.load_cluster_ids = load_cluster_ids
         self.load_cluster_sizes = load_cluster_sizes
         self.lines_to_buffer = lines_to_buffer
+        self.keep_all = keep_all
 
     def run(self, data: DocumentsPipeline, rank: int = 0, world_size: int = 1):
-        if not self.data_folder.isfile(f"{rank:06d}.remove"):
+        if not self.data_folder.isfile(f"{rank:06d}.remove") and not self.kepp_all:
             logger.warning(f"No .remove file for {rank=}.")
             for doc in data:
                 self.stat_update(StatHints.total, StatHints.forwarded)
@@ -589,7 +592,7 @@ class MinhashDedupFilter(PipelineStep):
             raise FileNotFoundError
 
         with self.data_folder.open(f"{rank:06d}.remove", "rb") as f:
-            with self.exclusion_writer if self.exclusion_writer else contextlib.nullcontext() as exc_writer:
+            with self.exclusion_writer if (self.exclusion_writer and not self.keep_all) else contextlib.nullcontext() as exc_writer:
 
                 def get_next():
                     data = f.read(struct.calcsize("I"))
@@ -608,7 +611,7 @@ class MinhashDedupFilter(PipelineStep):
                     sizes_loader = metadata_loader(f"{rank:06d}.sizes")
                     next_size = next(sizes_loader, None)
 
-                next_removal = get_next()
+                next_removal = get_next() if not self.keep_all else None
                 for idx, doc in enumerate(data):
                     with self.track_time():
                         # load and save metadata
@@ -627,7 +630,7 @@ class MinhashDedupFilter(PipelineStep):
                                 doc.metadata["minhash_cluster_size"] = 1
 
                         self.stat_update(StatHints.total)
-                        if next_removal == idx:
+                        if next_removal == idx and not self.keep_all:
                             # to remove
                             self.stat_update(StatHints.dropped)
                             if self.exclusion_writer:
