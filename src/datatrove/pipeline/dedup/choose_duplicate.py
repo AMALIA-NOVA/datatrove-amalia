@@ -4,7 +4,10 @@ from datatrove.utils.typeshelper import StatHints
 from datatrove.pipeline.writers.disk_base import DiskWriter
 
 class KeepHigherQuality(PipelineStep):
-    """Keeps the document with the highest quality score from each cluster of duplicates."""
+    """
+    Keeps the document with the highest quality score from each cluster of duplicates.
+    For this to work, the task's number of the MinhashDedupSignature and MinhashDedupFilter must exactly 1.
+    """
 
     name = "☀️ KEEP HIGHER QUALITY"
 
