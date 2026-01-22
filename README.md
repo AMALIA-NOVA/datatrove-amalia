@@ -4,6 +4,7 @@ This is a fork of the Datatrove library developed for the AMALIA project. The ch
 - Creation of the [MareNostrumExecutor](src/datatrove/executor/marenostrum.py) to run pipelines on the MareNostrum cluster.
 - Creation of the [post-scraping blocks](src/datatrove/pipeline/post_scraping) to apply additional processing to the text after it has been extracted.
 - More statistics, related to the filters, are added to the metadata of the documents.
+- Creation of the [KeepHigherQuality](src/datatrove/pipeline/dedup/choose_duplicate.py) block to keep the document with higher quality (according to a quality_score in the metadata previously measured) when deduplicating.
 
 DataTrove is a library to process, filter and deduplicate text data at a very large scale. It provides a set of prebuilt
 commonly used processing blocks with a framework to easily add custom functionality.
@@ -426,6 +427,8 @@ JsonlWriter(
 For deduplication check the
 examples [minhash_deduplication.py](examples/minhash_deduplication.py), [sentence_deduplication.py](examples/sentence_deduplication.py)
 and [exact_substrings.py](examples/exact_substrings.py).
+
+For methods to choose between duplicate documents see [choose_duplicate.py](src/datatrove/pipeline/dedup/choose_duplicate.py).
 
 ### Summary Statistics
 

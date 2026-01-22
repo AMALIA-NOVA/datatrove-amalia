@@ -574,7 +574,7 @@ class MinhashDedupFilter(PipelineStep):
         self.keep_all = keep_all
 
     def run(self, data: DocumentsPipeline, rank: int = 0, world_size: int = 1):
-        if not self.data_folder.isfile(f"{rank:06d}.remove") and not self.kepp_all:
+        if not self.data_folder.isfile(f"{rank:06d}.remove") and not self.keep_all:
             logger.warning(f"No .remove file for {rank=}.")
             for doc in data:
                 self.stat_update(StatHints.total, StatHints.forwarded)
