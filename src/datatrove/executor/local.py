@@ -5,7 +5,7 @@ from typing import Callable
 
 import multiprocess
 
-from datatrove.executor.base import PipelineExecutor
+from datatrove.executor.base import DistributedEnvVars, PipelineExecutor
 from datatrove.io import DataFolderLike
 from datatrove.pipeline.base import PipelineStep
 from datatrove.utils.logging import logger
@@ -16,7 +16,7 @@ class LocalPipelineExecutor(PipelineExecutor):
     """Executor to run a pipeline locally
 
     Args:
-        pipeline: a list of PipelineStep and/or custom lamdba functions
+        pipeline: a list of PipelineStep and/or custom lambda functions
             with arguments (data: DocumentsPipeline, rank: int,
             world_size: int)
         tasks: total number of tasks to run the pipeline on (default: 1)
@@ -90,15 +90,17 @@ class LocalPipelineExecutor(PipelineExecutor):
         Returns:
 
         """
-        assert not self.depends or (
-            isinstance(self.depends, LocalPipelineExecutor)
-        ), "depends= must be a LocalPipelineExecutor"
+        assert not self.depends or (isinstance(self.depends, LocalPipelineExecutor)), (
+            "depends= must be a LocalPipelineExecutor"
+        )
         if self.depends:
             # take care of launching any unlaunched dependencies
             if not self.depends._launched:
                 logger.info(f'Launching dependency job "{self.depends}"')
                 self.depends.run()
-            while (incomplete := len(self.depends.get_incomplete_ranks())) > 0:
+            while (
+                incomplete := len(self.depends.get_incomplete_ranks(skip_completed=True))
+            ) > 0:  # set skip_completed=True to get *real* incomplete task count
                 logger.info(f"Dependency job still has {incomplete}/{self.depends.world_size} tasks. Waiting...")
                 time.sleep(2 * 60)
 
@@ -109,44 +111,60 @@ class LocalPipelineExecutor(PipelineExecutor):
 
         self.save_executor_as_json()
         mg = multiprocess.Manager()
-        ranks_q = mg.Queue()
-        for i in range(self.workers):
-            ranks_q.put(i)
+        try:
+            ranks_q = mg.Queue()
+            for i in range(self.workers):
+                ranks_q.put(i)
 
-        ranks_to_run = self.get_incomplete_ranks(
-            range(self.local_rank_offset, self.local_rank_offset + self.local_tasks)
-        )
-        if (skipped := self.local_tasks - len(ranks_to_run)) > 0:
-            logger.info(f"Skipping {skipped} already completed tasks")
+            ranks_to_run = self.get_incomplete_ranks(
+                range(self.local_rank_offset, self.local_rank_offset + self.local_tasks)
+            )
+            if (skipped := self.local_tasks - len(ranks_to_run)) > 0:
+                logger.info(f"Skipping {skipped} already completed tasks")
 
-        if self.workers == 1:
-            pipeline = self.pipeline
-            stats = []
-            for rank in ranks_to_run:
-                self.pipeline = deepcopy(pipeline)
-                stats.append(self._launch_run_for_rank(rank, ranks_q))
-        else:
-            completed_counter = mg.Value("i", skipped)
-            completed_lock = mg.Lock()
-            ctx = multiprocess.get_context(self.start_method)
-            with ctx.Pool(self.workers) as pool:
-                stats = list(
-                    pool.imap_unordered(
-                        partial(
-                            self._launch_run_for_rank,
-                            ranks_q=ranks_q,
-                            completed=completed_counter,
-                            completed_lock=completed_lock,
-                        ),
-                        ranks_to_run,
+            if self.workers == 1:
+                pipeline = self.pipeline
+                stats = []
+                for rank in ranks_to_run:
+                    self.pipeline = deepcopy(pipeline)
+                    stats.append(self._launch_run_for_rank(rank, ranks_q))
+            else:
+                completed_counter = mg.Value("i", skipped)
+                completed_lock = mg.Lock()
+                ctx = multiprocess.get_context(self.start_method)
+                with ctx.Pool(self.workers) as pool:
+                    stats = list(
+                        pool.imap_unordered(
+                            partial(
+                                self._launch_run_for_rank,
+                                ranks_q=ranks_q,
+                                completed=completed_counter,
+                                completed_lock=completed_lock,
+                            ),
+                            ranks_to_run,
+                        )
                     )
-                )
-        # merged stats
-        stats = sum(stats, start=PipelineStats())
-        with self.logging_dir.open("stats.json", "wt") as statsfile:
-            stats.save_to_disk(statsfile)
-        logger.success(stats.get_repr(f"All {self.local_tasks} tasks"))
-        return stats
+            # merged stats
+            stats = sum(stats, start=PipelineStats())
+            with self.logging_dir.open("stats.json", "wt") as statsfile:
+                stats.save_to_disk(statsfile)
+            logger.success(stats.get_repr(f"All {self.local_tasks} tasks"))
+            return stats
+        finally:
+            mg.shutdown()
+
+    def get_distributed_env(self, node_rank: int = -1) -> DistributedEnvVars:
+        """Get distributed environment variables for LOCAL executor."""
+        # Default values for local execution - these can be overridden if needed
+        # For now, we'll use reasonable defaults
+
+        return DistributedEnvVars(
+            datatrove_node_ips="localhost",
+            datatrove_cpus_per_task="-1",
+            datatrove_mem_per_cpu="-1",
+            datatrove_gpus_on_node="-1",
+            datatrove_executor="LOCAL",
+        )
 
     @property
     def world_size(self) -> int:

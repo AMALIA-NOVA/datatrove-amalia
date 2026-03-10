@@ -1,35 +1,36 @@
 [project]
 name = "datatrove-amalia"
-version = "0.4.0"  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+version = "0.9.0"  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
 description = "HuggingFace library to process and filter large amounts of webdata"
 readme = "README.md"
 authors = [
-  {name = "HuggingFace Inc.", email = "guilherme@huggingface.co"}
+  {name = "MacroData Inc.", email = "guilherme@macrodata.co"},
+  {name = "HuggingFace Inc.", email = "joel@hf.co"}
 ]
 license = {text = "Apache-2.0"}
 classifiers = [
-    "Intended Audience :: Developers",
-    "Intended Audience :: Education",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 keywords = ["data", "machine", "learning", "processing"]
 requires-python = ">=3.10.0"
 dependencies = [
-    "dill>=0.3.0",
-    "fsspec>=2023.12.2",
-    "huggingface-hub>=0.17.0",
-    "humanize",
-    "loguru>=0.7.0",
-    "multiprocess",
-    "numpy>=2.0.0",
-    "tqdm",
+  "dill>=0.3.0",
+  "fsspec>=2023.12.2",
+  "huggingface-hub>=0.34.0,<1.0", # >=0.34.0 to enable hf-xet; transformers 4 requires <1.0
+  "humanize",
+  "loguru>=0.7.0",
+  "multiprocess",
+  "numpy>=2.0.0",
+  "tqdm",
 ]
 
 [project.optional-dependencies]
@@ -43,47 +44,62 @@ io = [
   "warcio",
   "datasets>=3.1.0",
   "orjson",
-  "zstandard"
+  "zstandard",
 ]
 s3 = [
   "s3fs>=2023.12.2",
 ]
 processing = [
-    "fasttext-numpy2-wheel",
-    "nltk",
-    "inscriptis",
-#   "readability-lxml @ git+https://github.com/huggingface/python-readability.git@speedup",
-    "tldextract",
-    "trafilatura>=1.8.0,<1.12.0",
-    "tokenizers",
-    "ftfy",
-    "fasteners",
-    "regex",
-    "xxhash",
-    "kenlm",
-    "pyahocorasick"
+  "fasttext-numpy2-wheel",
+  "nltk",
+  "inscriptis",
+  "tldextract",
+  "trafilatura>=1.8.0,<1.12.0",
+  "tokenizers",
+  "ftfy",
+  "fasteners",
+  "regex",
+  "xxhash",
+  "pyahocorasick",
 ]
 decont = [
-    "lighteval>=0.3.0"
+  "lighteval>=0.3.0",
 ]
 multilingual = [
-    "spacy[ja]>=3.8",
-    "stanza",
-    "pyvi", # vietnamese
-    "pythainlp", # thai
-    "jieba", # chinese
-    "indic-nlp-library", # indic languages
-    "kiwipiepy", # korean
-    # urduhack has keras and tensorflow as dependencies and requires a specific version to work...
-    "urduhack",
-    "tensorflow>=2.16",
-    "khmer-nltk", # khmer
-    "laonlp", # lao
-    "botok", # tibetan languages,
-    "pyidaungsu-numpy2", # burmese
+  "spacy[ja]>=3.8",
+  "stanza",
+  "pyvi", # vietnamese
+  "pythainlp", # thai
+  "jieba", # chinese
+  "indic-nlp-library", # indic languages
+  "kiwipiepy<0.22.0", # korean - v0.22.0 introduced issues, pin to previous version
+  # urduhack has keras and tensorflow as dependencies and requires a specific version to work...
+  "urduhack",
+  "tensorflow>=2.16",
+  "khmer-nltk", # khmer
+  "laonlp", # lao
+  "botok", # tibetan languages,
+  "pyidaungsu-numpy2", # burmese
+]
+inference = [
+  "datatrove[io]",
+  "aiofiles",
+  "httpx",
+  "aiosqlite",
+  "vllm",
+  "sglang",
+  "bitsandbytes",
+  "numpy>=2.0.0,<2.3", # numba requires numpy<=2.2
+  "typer",
+  "pyyaml",
+  "pandas",
+  "transformers>=4.57", # as long as vllm does not support v5
+]
+ray = [
+  "ray[default]",
 ]
 quality = [
-  "ruff>=0.1.5"
+  "ruff>=0.1.5",
 ]
 testing = [
   "datatrove[cli]",
@@ -91,22 +107,23 @@ testing = [
   "datatrove[processing]",
   "datatrove[multilingual]",
   "datatrove[s3]",
-  # Lighteval doesn't support numpy>=2.0.0
-#  "datatrove[decont]",
-# Flask doesn't have correct dependencies on werkzeux, causing issues, thus we pin flask 3.1 (which currently works) to avoid it
+  "datatrove[ray]",
+  "datatrove[inference]",
+  # "datatrove[decont]", # Exclude decont because lighteval has very restrictive vllm requirements: "vllm>=0.10.0,<0.10.2"
+  # Flask doesn't have correct dependencies on werkzeug, causing issues, thus we pin flask 3.1 (which currently works) to avoid it
   "flask>=3.1.0",
   "pytest",
+  "pytest-rerunfailures",
   "pytest-timeout",
   "pytest-xdist",
   "moto[s3,server]",
-  "spacy[ja]"
 ]
 all = [
   "datatrove[quality]",
   "datatrove[testing]",
 ]
 dev = [
-  "datatrove[all]"
+  "datatrove[all]",
 ]
 
 [project.urls]
@@ -119,6 +136,7 @@ launch_pickled_pipeline = "datatrove.tools.launch_pickled_pipeline:main"
 failed_logs = "datatrove.tools.failed_logs:main"
 inspect_data = "datatrove.tools.inspect_data:main"
 jobs_status = "datatrove.tools.jobs_status:main"
+track_jobs = "datatrove.tools.track_jobs:main"
 
 [build-system]
 requires = ["setuptools"]
@@ -128,7 +146,10 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-datatrove = ["assets/*"]
+datatrove = [
+  "assets/*",
+  "pipeline/inference/*.md",
+]
 
 [tool.ruff]
 lint.ignore = [
@@ -156,3 +177,5 @@ known-first-party = [
   "datatrove"
 ]
 
+[tool.pytest.ini_options]
+timeout = 120  # 2 minute timeout for all tests to prevent CI hangs

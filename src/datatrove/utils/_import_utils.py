@@ -81,6 +81,10 @@ def is_tokenizers_available():
     return _is_package_available("tokenizers")
 
 
+def is_fasteners_available():
+    return _is_package_available("fasteners")
+
+
 # Distribution Check
 @lru_cache
 def _is_distribution_available(distribution_name: str):
@@ -108,3 +112,7 @@ def is_moto_available():
 
 def is_torch_available():
     return _is_package_available("torch")
+
+
+def is_dnspython_available():
+    return _is_package_available("dnspython")

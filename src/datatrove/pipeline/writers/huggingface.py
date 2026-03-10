@@ -17,10 +17,6 @@ from datatrove.pipeline.writers import ParquetWriter
 from datatrove.utils.logging import logger
 
 
-MAX_RETRIES = 12
-BASE_DELAY = 0.1
-
-
 class HuggingFaceDatasetWriter(ParquetWriter):
     default_output_filename: str = "data/${rank}.parquet"
     name = "🤗 HuggingFace"
@@ -38,6 +34,7 @@ class HuggingFaceDatasetWriter(ParquetWriter):
         max_file_size: int = round(4.5 * 2**30),  # 4.5GB, leave some room for the last batch
         schema: Any = None,
         revision: str | None = None,
+        save_media_bytes=False,
     ):
         """
         This class is intended to upload VERY LARGE datasets. Consider using `push_to_hub` or just using a
@@ -64,10 +61,9 @@ class HuggingFaceDatasetWriter(ParquetWriter):
         self.cleanup = cleanup
         if not self.local_working_dir.is_local():
             raise ValueError("local_working_dir must be a local path")
-        if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER", "0") != "1":
+        if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER", "0") == "1":
             logger.warning(
-                'HF_HUB_ENABLE_HF_TRANSFER is not set to "1". Install hf_transfer and set the env '
-                "variable for faster uploads:\npip install hf-transfer\nexport HF_HUB_ENABLE_HF_TRANSFER=1"
+                "You should now use xet for uploads.\nSee https://hf.co/docs/huggingface_hub/en/guides/download#faster-downloads\nexport HF_HUB_ENABLE_HF_TRANSFER=0"
             )
         super().__init__(
             output_folder=local_working_dir,
@@ -77,6 +73,7 @@ class HuggingFaceDatasetWriter(ParquetWriter):
             expand_metadata=expand_metadata,
             max_file_size=max_file_size,
             schema=schema,
+            save_media_bytes=save_media_bytes,
         )
         self.operations = []
         self._repo_init = False
@@ -116,14 +113,15 @@ class HuggingFaceDatasetWriter(ParquetWriter):
                 )
                 break
             except HfHubHTTPError as e:
-                if "A commit has happened since" in e.server_message:
-                    if retries >= MAX_RETRIES:
-                        logger.error(f"Failed to create commit after {MAX_RETRIES=}. Giving up.")
+                if self.is_retryable_hf_hub_error(e):
+                    if retries >= self.HF_MAX_RETRIES:
+                        logger.error(f"Failed to create commit after {self.HF_MAX_RETRIES=}. Giving up.")
                         raise e
                     logger.info("Commit creation race condition issue. Waiting...")
-                    time.sleep(BASE_DELAY * 2**retries + random.uniform(0, 2))
+                    time.sleep(self.HF_BASE_DELAY * 2**retries + random.uniform(0, 2))
                     retries += 1
                 else:
+                    logger.error(f"Failed to create commit: {e.server_message or str(e)}")
                     raise e
 
     def _on_file_switch(self, original_name, old_filename, new_filename):

@@ -1,6 +1,11 @@
 import unittest
 
-from datatrove.utils.word_tokenizers import TibetanTokenizer, load_tokenizer_assignments, load_word_tokenizer
+from datatrove.utils.word_tokenizers import (
+    TibetanTokenizer,
+    WhitespaceTokenizer,
+    load_tokenizer_assignments,
+    load_word_tokenizer,
+)
 
 
 SAMPLE_TEXT = (
@@ -21,6 +26,13 @@ def get_unique_tokenizers():
 
 
 class TestWordTokenizers(unittest.TestCase):
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Release tokenizer caches before interpreter shutdown."""
+        load_word_tokenizer.cache_clear()
+        load_tokenizer_assignments.cache_clear()
+        WhitespaceTokenizer._spacy_xx.fget.cache_clear()  # type: ignore[union-attr]
+
     def test_word_tokenizers(self):
         for language, tokenizer in get_unique_tokenizers():
             tokens = tokenizer.word_tokenize(SAMPLE_TEXT)
@@ -41,9 +53,9 @@ class TestWordTokenizers(unittest.TestCase):
             spans = tokenizer.span_tokenize(SAMPLE_TEXT)
             assert len(spans) >= 1, f"'{language}' tokenizer doesn't output spans"
             spans_match_sents = [sent in SAMPLE_TEXT[span[0] : span[1]] for sent, span in zip(sents, spans)]
-            assert (tokenizer.language == "ur" or isinstance(tokenizer, TibetanTokenizer)) or all(
-                spans_match_sents
-            ), f"'{language}' tokenizer spans don't match with sentences"
+            assert (tokenizer.language == "ur" or isinstance(tokenizer, TibetanTokenizer)) or all(spans_match_sents), (
+                f"'{language}' tokenizer spans don't match with sentences"
+            )
 
     def test_english_tokenizer(self):
         en_tokenizer = load_word_tokenizer("en")

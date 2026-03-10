@@ -5,7 +5,7 @@ from typing import Callable
 
 from tqdm import tqdm
 
-from datatrove.data import Document, DocumentsPipeline
+from datatrove.data import Document, DocumentsPipeline, Media
 from datatrove.io import DataFileLike, DataFolderLike, get_datafolder, get_shard_from_paths_file
 from datatrove.pipeline.base import PipelineStep
 from datatrove.utils.logging import logger
@@ -58,11 +58,21 @@ class BaseReader(PipelineStep):
         Returns: a dictionary with text, id, media and metadata fields
 
         """
+        metadata = data.pop("metadata", {})
+        if isinstance(metadata, str):
+            import json
+
+            try:
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError:
+                pass
+        if not isinstance(metadata, dict):
+            metadata = {"metadata": metadata}
         return {
             "text": data.pop(self.text_key, ""),
             "id": data.pop(self.id_key, f"{path}/{id_in_file}"),
             "media": data.pop("media", []),
-            "metadata": data.pop("metadata", {}) | data,  # remaining data goes into metadata
+            "metadata": metadata | data,  # remaining data goes into metadata
         }
 
     def get_document_from_dict(self, data: dict, source_file: str, id_in_file: int | str):
@@ -85,6 +95,8 @@ class BaseReader(PipelineStep):
                     f'Is your `text_key` ("{self.text_key}") correct? Available keys: {list(data.keys())}'
                 )
             return None
+        if parsed_data.get("media", None):
+            parsed_data["media"] = [Media(**media) for media in parsed_data["media"]]
         document = Document(**parsed_data)
         if self.default_metadata:
             document.metadata = self.default_metadata | document.metadata
@@ -118,6 +130,7 @@ class BaseDiskReader(BaseReader):
         recursive: whether to search files recursively. Ignored if paths_file is provided
         glob_pattern: pattern that all files must match exactly to be included (relative to data_folder). Ignored if paths_file is provided
         shuffle_files: shuffle the files within the returned shard. Mostly used for data viz. purposes, do not use with dedup blocks
+        add_file_path: add the source file path to metadata when missing
     """
 
     type = "📖 - READER"
@@ -137,6 +150,7 @@ class BaseDiskReader(BaseReader):
         recursive: bool = True,
         glob_pattern: str | None = None,
         shuffle_files: bool = False,
+        add_file_path: bool = True,
     ):
         super().__init__(limit, skip, adapter, text_key, id_key, default_metadata)
         self.data_folder = get_datafolder(data_folder)
@@ -146,10 +160,11 @@ class BaseDiskReader(BaseReader):
         self.shuffle_files = shuffle_files
         self.file_progress = file_progress
         self.doc_progress = doc_progress
+        self.add_file_path = add_file_path
 
     def get_document_from_dict(self, data: dict, source_file: str, id_in_file: int):
         document = super().get_document_from_dict(data, source_file, id_in_file)
-        if document:
+        if document and self.add_file_path:
             document.metadata.setdefault("file_path", self.data_folder.resolve_paths(source_file))
         return document
 
@@ -188,7 +203,7 @@ class BaseDiskReader(BaseReader):
         ):
             for i, filepath in enumerate(shard):
                 self.stat_update("input_files")
-                logger.info(f"Reading input file {filepath}, {i+1}/{len(shard)}")
+                logger.info(f"Reading input file {filepath}, {i + 1}/{len(shard)}")
                 di = 0
                 ndocs = 0
                 for di, document in enumerate(self.read_file(filepath)):

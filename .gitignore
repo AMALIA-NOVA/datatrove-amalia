@@ -161,3 +161,9 @@ cython_debug/
 .vscode/
 
 playground/
+
+# codex
+node_modules/
+
+# benchmark data
+examples/inference/benchmark/results/
