@@ -1,5 +1,7 @@
 from datatrove.executor import SlurmPipelineExecutor
 from datatrove.executor.slurm import launch_slurm_job
+from dotenv import load_dotenv
+import os
 
 
 class MareNostrumExecutor(SlurmPipelineExecutor):
@@ -40,17 +42,29 @@ class MareNostrumExecutor(SlurmPipelineExecutor):
         """Add HF_HOME export to launch script."""
         content = super().get_launch_file_contents(sbatch_args, run_script)
 
-        # Add the HF_HOME export before the run_script
+        load_dotenv()  # Load environment variables from .env file if it exists
+
+        hf_base = os.environ.get("HF_HOME")
+        if hf_base is None:
+            raise ValueError(
+                "HF_HOME is not set. Add it to your .env file or export it in your shell."
+            )
+        extra_pythonpath = os.environ.get("EXTRA_PYTHONPATH", "")
+
+        env_exports = [
+            f'export HF_HOME="{hf_base}"',
+            f'export TRANSFORMERS_CACHE="{hf_base}/hub"',
+            f'export HF_ASSETS_CACHE="{hf_base}/assets"',
+            f'export HF_HUB_CACHE="{hf_base}/hub"',
+        ]
+        if extra_pythonpath:
+            env_exports.append(f'export PYTHONPATH="{extra_pythonpath}:$PYTHONPATH"')
+
         lines = content.split('\n')
         for i, line in enumerate(lines):
             if "export PYTHONUNBUFFERED=TRUE" in line:
-                # Add our export after this line
-                lines.insert(i + 1, 'export HF_HOME="/gpfs/projects/epor32/"')
-                lines.insert(i + 2, 'export TRANSFORMERS_CACHE="/gpfs/projects/epor32/hub"')
-                lines.insert(i + 3, 'export HF_ASSETS_CACHE="/gpfs/projects/epor32/assets"')
-                lines.insert(i + 4, 'export HF_HUB_CACHE="/gpfs/projects/epor32/hub"')
-                lines.insert(i + 5, 'export PYTHONPATH="/gpfs/projects/epor32/gvmartins/arquivo-filter:$PYTHONPATH"')
-                # lines.insert(i + 3, 'export PATH=$PATH:/gpfs/projects/epor32/gvmartins/datatrove_amalia/src/datatrove/tools')
+                for j, export_line in enumerate(env_exports):
+                    lines.insert(i + 1 + j, export_line)
                 break
 
         return '\n'.join(lines)

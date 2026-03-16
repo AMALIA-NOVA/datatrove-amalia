@@ -17,7 +17,7 @@ class KeepHigherQuality(PipelineStep):
 
     def run(self, data: DocumentsPipeline, rank: int = 0, world_size: int = 1) -> DocumentsPipeline:
         with self.track_time():
-            cluster_best_quality = {}  # Only store quality scores, not full documents
+            cluster_best_quality = {}
 
             # First pass: find best quality score per cluster
             docs_buffer = []
@@ -41,7 +41,6 @@ class KeepHigherQuality(PipelineStep):
                     # Single document, always keep
                     self.update_doc_stats(doc)
                     self.stat_update(StatHints.forwarded)
-                    # print(f"Cluster {cluster_id} - Size {doc.metadata.get('minhash_cluster_size', 0)}: Keeping single document.")
                     yield doc
                 elif cluster_id not in cluster_yielded:
                     quality_score = doc.metadata.get("quality_score", 0)
@@ -50,22 +49,15 @@ class KeepHigherQuality(PipelineStep):
                         cluster_yielded.add(cluster_id)
                         self.update_doc_stats(doc)
                         self.stat_update(StatHints.forwarded)
-                        # print(f"Cluster {cluster_id} - Size {doc.metadata.get('minhash_cluster_size', 0)}: Keeping document with quality score {quality_score}.")
                         yield doc
                     else:
                         self.update_doc_stats(doc)
                         self.stat_update(StatHints.dropped)
-                        # print(f"Cluster {cluster_id} - Size {doc.metadata.get('minhash_cluster_size', 0)}: Excluding document with quality score {quality_score}.")
                         if self.exclusion_writer:
                             self.exclusion_writer.write(doc, rank)
                 else:
                     # Cluster already yielded its best, drop this duplicate
                     self.update_doc_stats(doc)
                     self.stat_update(StatHints.dropped)
-                    # quality_score = doc.metadata.get("quality_score", 0)
-                    # if quality_score == cluster_best_quality[cluster_id]:
-                    #     print(f"Cluster {cluster_id} - Size {doc.metadata.get('minhash_cluster_size', 0)}: Duplicate document with quality score {quality_score}.")
-                    # else:
-                    #     print(f"Cluster {cluster_id} - Size {doc.metadata.get('minhash_cluster_size', 0)}: Excluding document with quality score {quality_score}.")
                     if self.exclusion_writer:
                         self.exclusion_writer.write(doc, rank)
